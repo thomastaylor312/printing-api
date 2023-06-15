@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/go-chi/httplog"
 	"github.com/thomastaylor312/printing-api/store"
@@ -14,11 +15,12 @@ import (
 )
 
 type ConfigHandlers struct {
-	db store.DataStore
+	db            store.DataStore
+	currentConfig atomic.Value
 }
 
-func NewConfigHandlers(db store.DataStore) *ConfigHandlers {
-	return &ConfigHandlers{db: db}
+func NewConfigHandlers(db store.DataStore, config atomic.Value) *ConfigHandlers {
+	return &ConfigHandlers{db: db, currentConfig: config}
 }
 
 // GetConfig gets the current configuration from the database
@@ -55,6 +57,7 @@ func (c *ConfigHandlers) PutConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// TODO: Validate config data
 	rawBuf := new(bytes.Buffer)
 	if err := gob.NewEncoder(rawBuf).Encode(config); err != nil {
 		writeHttpError(r.Context(), w, fmt.Errorf("error encoding config: %v", err), http.StatusInternalServerError)
@@ -65,6 +68,9 @@ func (c *ConfigHandlers) PutConfig(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("error putting config: %v", err), http.StatusInternalServerError)
 		return
 	}
+
+	// If we stored, update the current config
+	c.currentConfig.Store(config)
 
 	if err := json.NewEncoder(w).Encode(config); err != nil {
 		logger.Error().Err(err).Msg("Error encoding response")

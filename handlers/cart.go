@@ -30,7 +30,7 @@ func (c *CartHandlers) GetCarts(w http.ResponseWriter, r *http.Request) {
 
 	keys, err := getKeys(c.db, "carts")
 	if err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error getting carts: %v", err), http.StatusInternalServerError)
+		writeHttpError(r.Context(), w, fmt.Errorf("error getting cart keys: %v", err), http.StatusInternalServerError)
 		return
 	}
 
@@ -68,12 +68,14 @@ func (c *CartHandlers) GetUserCart(w http.ResponseWriter, r *http.Request) {
 func (c *CartHandlers) PutCart(w http.ResponseWriter, r *http.Request) {
 	logger := httplog.LogEntry(r.Context())
 	userID := chi.URLParam(r, "userId")
-	var cart types.Cart
+	cart := types.Cart{}
 	// Validate that we can decode the cart
 	if err := json.NewDecoder(r.Body).Decode(&cart); err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error decoding: %v", err), http.StatusBadRequest)
+		writeHttpError(r.Context(), w, fmt.Errorf("body is not valid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
+	// TODO: Validate that the paper types all exist and that the widths and heights are valid
+	// according to config
 	rawBuf := new(bytes.Buffer)
 	if err := gob.NewEncoder(rawBuf).Encode(cart); err != nil {
 		// If we can't encode, that is our fault, not the user's

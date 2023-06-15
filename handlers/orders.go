@@ -104,6 +104,7 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("error parsing user id: %v", err), http.StatusBadRequest)
 		return
 	}
+	// TODO: Use the square checkout API to generate a payment link and return it, calculating the shipping price as well
 	add[*types.Order](o.db, "orders", w, r, validateOrderFunc(uint(id)), func(order *types.Order) error {
 		// Add the order to the user's list of orders
 		userOrdersKey := fmt.Sprintf("orders:%d", order.UserID)
@@ -190,7 +191,7 @@ func validateOrderFunc(currentUserID uint) ValidationFunc[*types.Order] {
 		if order.UserID != currentUserID {
 			return http.StatusForbidden, fmt.Errorf("user %d cannot create order for another user", currentUserID)
 		}
-		// TODO: Additional validation around shipping address, etc.
+		// TODO: Additional validation around shipping profile, calculated cost, etc.
 		return 0, nil
 	}
 }

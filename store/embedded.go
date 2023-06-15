@@ -37,6 +37,7 @@ func (d *DiskDataStore) Get(key string) ([]byte, error) {
 		if value == nil {
 			return ErrKeyNotFound
 		}
+		retval = make([]byte, len(value))
 		copy(retval, value)
 		return nil
 	})

@@ -1,5 +1,9 @@
 package types
 
+import (
+	"net/url"
+)
+
 type ShippingMethod string
 type PaperFinish string
 
@@ -31,32 +35,39 @@ func (u *User) SetID(id uint) {
 
 // Print represents a print that a user wants to order
 type Print struct {
-	PrintID     uint    `json:"id"`
 	Width       float64 `json:"width"`
 	Height      float64 `json:"height"`
 	BorderSize  float64 `json:"borderSize"`
 	PaperTypeID uint    `json:"paperTypeId"`
-	PictureUrl  string  `json:"pictureUrl"`
+	PictureID   uint    `json:"pictureId"`
 	CropX       *uint   `json:"cropX"`
 	CropY       *uint   `json:"cropY"`
 	Cost        float64 `json:"cost"`
 	Quantity    uint    `json:"quantity"`
+	// An optional shipping cost for this print. Will be overridden on an order if the order has a
+	// shipping cost set
+	ShippingCost *float64 `json:"shippingCost"`
 }
 
-func (p *Print) ID() uint {
-	return p.PrintID
+type Picture struct {
+	PictureID uint    `json:"id"`
+	Name      string  `json:"name"`
+	URL       url.URL `json:"url"`
 }
 
-func (p *Print) SetID(id uint) {
-	p.PrintID = id
+func (p *Picture) ID() uint {
+	return p.PictureID
+}
+
+func (p *Picture) SetID(id uint) {
+	p.PictureID = id
 }
 
 // ShippingDetails represents the shipping details for an order
 type ShippingDetails struct {
-	Address        string         `json:"address"`
-	ShippingCost   float64        `json:"shippingCost"`
-	ShippingMethod ShippingMethod `json:"shippingMethod"`
-	TrackingNumber *string        `json:"trackingNumber"`
+	ShippingCost   float64         `json:"shippingCost"`
+	ShippingMethod ShippingProfile `json:"shippingMethod"`
+	TrackingNumber *string         `json:"trackingNumber"`
 }
 
 // Order represents an order in the system
@@ -64,7 +75,10 @@ type Order struct {
 	OrderID         uint            `json:"id"`
 	UserID          uint            `json:"userId"`
 	Prints          []Print         `json:"prints"`
+	PaymentLink     url.URL         `json:"paymentLink"`
+	ExternalOrderID string          `json:"externalOrderId"`
 	ShippingDetails ShippingDetails `json:"shippingDetails"`
+	IsPaid          bool            `json:"isPaid"`
 	HasShipped      bool            `json:"hasShipped"`
 	IsDelivered     bool            `json:"isDelivered"`
 }
@@ -101,9 +115,18 @@ func (p *PaperType) SetID(id uint) {
 
 // SupplyCosts represents the costs of supplies for printing
 type SupplyCosts struct {
-	InkPerSquareInch             float64 `json:"inkPerSquareInch"`
-	AdditionalSupplyCostPerPrint float64 `json:"additionalSupplyCostPerPrint"`
-	DesiredProfitMargin          float64 `json:"desiredProfitMargin"`
+	InkPerSquareInch             float64           `json:"inkPerSquareInch"`
+	AdditionalSupplyCostPerPrint float64           `json:"additionalSupplyCostPerPrint"`
+	DesiredProfitMargin          float64           `json:"desiredProfitMargin"`
+	ShippingProfiles             []ShippingProfile `json:"shippingProfiles"`
+}
+
+// TODO: We'll eventually need to support multiple types of shipping profiles (like weight and
+// quantity based)
+type ShippingProfile struct {
+	ShippingMethod ShippingMethod `json:"shippingMethod"`
+	Cost           float64        `json:"cost"`
+	Name           string         `json:"name"`
 }
 
 type Config struct {

@@ -59,8 +59,9 @@ func getKeys(db store.DataStore, key string) ([]string, error) {
 	} else if err != nil {
 		return make([]string, 0), nil
 	} else {
-		if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&keys); err != nil {
-			return nil, err
+		reader := bytes.NewReader(data)
+		if err := gob.NewDecoder(reader).Decode(&keys); err != nil {
+			return nil, fmt.Errorf("error decoding bytes from store: %v", err)
 		}
 	}
 
