@@ -50,9 +50,14 @@ type Print struct {
 }
 
 type Picture struct {
-	PictureID uint    `json:"id"`
-	Name      string  `json:"name"`
-	URL       url.URL `json:"url"`
+	PictureID uint   `json:"id"`
+	UserID    uint   `json:"userId"`
+	Name      string `json:"name"`
+	// This is the URL the picture is distributed from, which could be a CDN or directly from a
+	// bucket. This is generally only set after uploading or fetching a picture and isn't stored in
+	// the database
+	URL *url.URL `json:"url,omitempty"`
+	// TODO: We should probably store a last used time so we can clean up old pictures
 }
 
 func (p *Picture) ID() uint {

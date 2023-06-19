@@ -68,6 +68,8 @@ func main() {
 			r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)
 			r.Post("/orders/{userId}", orderHandler.AddOrder)
 			r.Put("/orders/{userId}/{id}", orderHandler.UpdateOrder)
+
+			// For pictures, create a new group that uses the content type middleware
 		})
 	})
 
