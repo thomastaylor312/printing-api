@@ -80,7 +80,32 @@ func (p *PictureHandlers) GetPictureInfo(w http.ResponseWriter, r *http.Request)
 	}
 }
 
-// TODO: Create picture
+// CreatePicture creates a picture in the database
+func (p *PictureHandlers) CreatePicture(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userId")
+
+	logger := httplog.LogEntry(r.Context()).With().Str("userID", userID).Logger()
+	logger.Debug().Msg("Creating picture")
+	add[*types.Picture](p.db, "pictures", w, r, nil, func(picture *types.Picture) error {
+		// Add the order to the user's list of orders
+		userPicturesKey := fmt.Sprintf("pictures:%d", picture.UserID)
+		keys, err := getKeys(p.db, userPicturesKey)
+		if err != nil {
+			return fmt.Errorf("error getting current pictures: %v", err)
+		}
+
+		keys = append(keys, fmt.Sprintf("pictures:%d", picture.ID()))
+		rawBuf := new(bytes.Buffer)
+		if err := gob.NewEncoder(rawBuf).Encode(keys); err != nil {
+			return fmt.Errorf("error adding keys: %v", err)
+		}
+		if err := p.db.Set(userPicturesKey, rawBuf.Bytes()); err != nil {
+			return fmt.Errorf("error adding keys: %v", err)
+		}
+
+		return nil
+	})
+}
 
 // UploadPicture uploads a picture to the database
 func (p *PictureHandlers) UploadPicture(w http.ResponseWriter, r *http.Request) {

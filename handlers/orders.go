@@ -108,16 +108,9 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 	add[*types.Order](o.db, "orders", w, r, validateOrderFunc(uint(id)), func(order *types.Order) error {
 		// Add the order to the user's list of orders
 		userOrdersKey := fmt.Sprintf("orders:%d", order.UserID)
-		data, err := o.db.Get(userOrdersKey)
-		var keys []string
-		if err != nil && errors.Is(err, store.ErrKeyNotFound) {
-			keys = make([]string, 0)
-		} else if err != nil {
-			return fmt.Errorf("error getting current orders: %v", err)
-		} else {
-			if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&keys); err != nil {
-				return fmt.Errorf("error decoding user orders: %v", err)
-			}
+		keys, err := getKeys(o.db, userOrdersKey)
+		if err != nil {
+			return fmt.Errorf("error getting keys: %v", err)
 		}
 
 		keys = append(keys, fmt.Sprintf("orders:%d", order.ID()))
