@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -22,7 +23,14 @@ func TestHappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cartHandler := handlers.NewCartHandlers(db)
+
+	conf := atomic.Value{}
+
+	conf.Store(types.Config{
+		MaxSize: 17.0,
+	})
+
+	cartHandler := handlers.NewCartHandlers(db, conf)
 	r := chi.NewRouter()
 	r.Get("/carts", cartHandler.GetCarts)
 	r.Get("/carts/{userId}", cartHandler.GetUserCart)
@@ -34,8 +42,9 @@ func TestHappyPath(t *testing.T) {
 		UserID: 1,
 		Prints: []types.Print{
 			{
-				// TODO: Add stuff for verification here when we get to that point
 				PictureID: 1,
+				Width:     8,
+				Height:    10,
 			},
 		},
 	}
@@ -89,7 +98,9 @@ func TestEmptyCart(t *testing.T) {
 	db, err := store.NewDiskDataStore(tmpfile)
 	require.NoError(t, err)
 
-	cartHandler := handlers.NewCartHandlers(db)
+	conf := atomic.Value{}
+
+	cartHandler := handlers.NewCartHandlers(db, conf)
 	r := chi.NewRouter()
 	r.Get("/carts/{userId}", cartHandler.GetUserCart)
 
@@ -106,3 +117,6 @@ func TestEmptyCart(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, types.Cart{UserID: 1}, cart)
 }
+
+// TODO: Test failed verification of print size
+// TODO: Test add single print to cart

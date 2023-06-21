@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog"
@@ -16,11 +17,12 @@ import (
 )
 
 type CartHandlers struct {
-	db store.DataStore
+	db     store.DataStore
+	config atomic.Value
 }
 
-func NewCartHandlers(db store.DataStore) *CartHandlers {
-	return &CartHandlers{db: db}
+func NewCartHandlers(db store.DataStore, conf atomic.Value) *CartHandlers {
+	return &CartHandlers{db: db, config: conf}
 }
 
 // GetCarts gets all carts
@@ -74,8 +76,14 @@ func (c *CartHandlers) PutCart(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("body is not valid JSON: %v", err), http.StatusBadRequest)
 		return
 	}
-	// TODO: Validate that the paper types all exist and that the widths and heights are valid
-	// according to config
+
+	for _, print := range cart.Prints {
+		if err := c.validatePrint(print); err != nil {
+			writeHttpError(r.Context(), w, err, http.StatusBadRequest)
+			return
+		}
+	}
+
 	rawBuf := new(bytes.Buffer)
 	if err := gob.NewEncoder(rawBuf).Encode(cart); err != nil {
 		// If we can't encode, that is our fault, not the user's
@@ -113,13 +121,8 @@ func (c *CartHandlers) AddPrintToCart(w http.ResponseWriter, r *http.Request) {
 
 	logger.Debug().Msg("Validating print")
 
-	// Fetch the paper type by ID, if the key doesn't exist, return bad request
-	_, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%d", print.PaperTypeID))
-	if errors.Is(err, store.ErrKeyNotFound) {
-		writeHttpError(r.Context(), w, fmt.Errorf("invalid paper ID given"), http.StatusBadRequest)
-		return
-	} else if err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error validating ID: %v", err), http.StatusInternalServerError)
+	if err := c.validatePrint(print); err != nil {
+		writeHttpError(r.Context(), w, err, http.StatusBadRequest)
 		return
 	}
 
@@ -195,5 +198,23 @@ func (c *CartHandlers) ensureCart(userID string) error {
 		}
 	}
 
+	return nil
+}
+
+func (c *CartHandlers) validatePrint(print types.Print) error {
+	// Fetch the paper type by ID, if the key doesn't exist, return bad request
+	_, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%d", print.PaperTypeID))
+	if errors.Is(err, store.ErrKeyNotFound) {
+		return fmt.Errorf("invalid paper ID given")
+	} else if err != nil {
+		return fmt.Errorf("error validating ID: %v", err)
+	}
+
+	// Check that width and height are not greater than the configured max size
+	val := c.config.Load()
+	config := val.(types.Config)
+	if print.Width > config.MaxSize && print.Height > config.MaxSize {
+		return fmt.Errorf("print is too large")
+	}
 	return nil
 }

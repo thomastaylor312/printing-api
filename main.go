@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"encoding/gob"
+	"go/types"
 	"net/http"
 	"path/filepath"
 	"sync/atomic"
@@ -26,7 +29,19 @@ func main() {
 
 	storage := store.NewDiskImageStore(filepath.Join(xdg.DataHome, "printing-api", "storage"))
 
+	// Do an initial fetch of the config
+	data, err := db.Get("config")
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Error getting config information on startup")
+	}
+	var config types.Config
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&config); err != nil {
+		logger.Fatal().Err(err).Msg("Error getting config information on startup")
+	}
+
 	conf := atomic.Value{}
+
+	conf.Store(config)
 
 	r := chi.NewRouter()
 
@@ -59,7 +74,7 @@ func main() {
 			paperHandler := handlers.NewPaperHandlers(db)
 			r.Get("/papers", paperHandler.GetPapers)
 
-			cartHandler := handlers.NewCartHandlers(db)
+			cartHandler := handlers.NewCartHandlers(db, conf)
 			r.Get("/carts/{userId}", cartHandler.GetUserCart)
 			r.Put("/carts/{userId}", cartHandler.PutCart)
 			r.Put("/carts/{userId}/print", cartHandler.AddPrintToCart)
@@ -104,7 +119,7 @@ func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value
 	r.Put("/papers/{id}", paperHandler.UpdatePaper)
 	r.Delete("/papers/{id}", paperHandler.DeletePaper)
 
-	cartHandler := handlers.NewCartHandlers(db)
+	cartHandler := handlers.NewCartHandlers(db, conf)
 	r.Get("/carts", cartHandler.GetCarts)
 	r.Get("/carts/{userId}", cartHandler.GetUserCart)
 
