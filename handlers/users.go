@@ -20,6 +20,8 @@ func (u *UserHandlers) GetUsers(w http.ResponseWriter, r *http.Request) {
 	get[*types.User](u.db, "users", w, r)
 }
 
+// TODO a get user function that lets the user get their own user info
+
 // AddUser adds a user to the database
 func (u *UserHandlers) AddUser(w http.ResponseWriter, r *http.Request) {
 	add[*types.User](u.db, "users", w, r, nil, nil)

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -146,16 +145,9 @@ func (o *OrderHandlers) DeleteOrder(w http.ResponseWriter, r *http.Request) {
 	delete[*types.Order](o.db, "orders", w, r, func() error {
 		// Add the order to the user's list of orders
 		userOrdersKey := fmt.Sprintf("orders:%s", userId)
-		data, err := o.db.Get(userOrdersKey)
-		var keys []string
-		if err != nil && errors.Is(err, store.ErrKeyNotFound) {
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("error getting current orders: %v", err)
-		} else {
-			if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&keys); err != nil {
-				return fmt.Errorf("error decoding user orders: %v", err)
-			}
+		keys, err := getKeys(o.db, userOrdersKey)
+		if err != nil {
+			return fmt.Errorf("error getting keys: %v", err)
 		}
 
 		db_key := fmt.Sprintf("orders:%s", orderId)

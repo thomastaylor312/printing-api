@@ -43,6 +43,8 @@ func (c *ConfigHandlers) GetConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Update the current config
+	c.currentConfig.Store(config)
 	if err := json.NewEncoder(w).Encode(config); err != nil {
 		logger.Error().Err(err).Msg("Error encoding response")
 	}

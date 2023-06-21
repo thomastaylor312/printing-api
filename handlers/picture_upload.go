@@ -137,7 +137,56 @@ func (p *PictureHandlers) UploadPicture(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// TODO: Delete picture
+// DeletePicture deletes a picture from the database and the bucket
+func (p *PictureHandlers) DeletePicture(w http.ResponseWriter, r *http.Request) {
+	userID := chi.URLParam(r, "userId")
+	pictureID := chi.URLParam(r, "id")
+	logger := httplog.LogEntry(r.Context()).With().Str("userID", userID).Str("pictureID", pictureID).Logger()
+	logger.Debug().Msg("Deleting picture")
+	// Decode picture data, checking that the user actually owns this picture
+	_, err := p.getPicture(pictureID, userID, w, r)
+	if err != nil {
+		// Our helper writes the error for us
+		return
+	}
+
+	// Delete the picture from the bucket
+	userId := chi.URLParam(r, "userId")
+	orderId := chi.URLParam(r, "id")
+	logger.Debug().Msg("Deleting picture from storage")
+	if err := p.storage.Delete(userId, orderId); err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error deleting picture: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// TODO: We'll probably want to do this first, so that if it fails we don't delete the picture
+	// Now delete from the database
+	delete[*types.Order](p.db, "pictures", w, r, func() error {
+		// Delete the picture from the list of all user pictures
+		userPicturesKey := fmt.Sprintf("pictures:%s", userId)
+		keys, err := getKeys(p.db, userPicturesKey)
+		if err != nil {
+			return fmt.Errorf("error getting keys: %v", err)
+		}
+
+		db_key := fmt.Sprintf("pictures:%s", orderId)
+		for i, key := range keys {
+			if key == db_key {
+				keys = append(keys[:i], keys[i+1:]...)
+				break
+			}
+		}
+		rawBuf := new(bytes.Buffer)
+		if err := gob.NewEncoder(rawBuf).Encode(keys); err != nil {
+			return fmt.Errorf("error adding keys: %v", err)
+		}
+		if err := p.db.Set(userPicturesKey, rawBuf.Bytes()); err != nil {
+			return fmt.Errorf("error adding keys: %v", err)
+		}
+
+		return nil
+	})
+}
 
 func (p *PictureHandlers) getPicture(pictureID string, userID string, w http.ResponseWriter, r *http.Request) (types.Picture, error) {
 	var picture types.Picture

@@ -3,7 +3,7 @@ package main
 import (
 	"net/http"
 	"path/filepath"
-	"time"
+	"sync/atomic"
 
 	"github.com/adrg/xdg"
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -23,6 +23,11 @@ func main() {
 	if err != nil {
 		logger.Fatal().Err(err).Msg("Error creating data store")
 	}
+
+	storage := store.NewDiskImageStore(filepath.Join(xdg.DataHome, "printing-api", "storage"))
+
+	conf := atomic.Value{}
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -30,11 +35,6 @@ func main() {
 	r.Use(middleware.RedirectSlashes)
 	r.Use(httplog.RequestLogger(logger))
 	r.Use(middleware.Recoverer)
-
-	// Set a timeout value on the request context (ctx), that will signal
-	// through ctx.Done() that the request has timed out and further
-	// processing should be stopped.
-	r.Use(middleware.Timeout(60 * time.Second))
 
 	// Gets the current user data for the logged in user
 	r.Get("/me", func(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +62,7 @@ func main() {
 			cartHandler := handlers.NewCartHandlers(db)
 			r.Get("/carts/{userId}", cartHandler.GetUserCart)
 			r.Put("/carts/{userId}", cartHandler.PutCart)
+			r.Put("/carts/{userId}/print", cartHandler.AddPrintToCart)
 
 			orderHandler := handlers.NewOrderHandlers(db)
 			r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
@@ -70,13 +71,23 @@ func main() {
 			r.Put("/orders/{userId}/{id}", orderHandler.UpdateOrder)
 
 			// For pictures, create a new group that uses the content type middleware
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.AllowContentType("image/jpeg", "image/png", "image/tiff"))
+
+				pictureHandler := handlers.NewPictureHandlers(db, storage)
+				r.Post("/pictures/{userId}", pictureHandler.CreatePicture)
+				r.Get("/pictures/{userId}", pictureHandler.GetPicturesByUser)
+				r.Get("/pictures/{userId}/{id}", pictureHandler.GetPictureInfo)
+				r.Put("/pictures/{userId}/{id}", pictureHandler.UploadPicture)
+				r.Delete("/pictures/{userId}/{id}", pictureHandler.DeletePicture)
+			})
 		})
 	})
 
 	// Mount the admin sub-router
 	r.Group(func(r chi.Router) {
 		// TODO: jwt middleware: https://github.com/go-chi/jwtauth
-		r.Mount("/admin/api", adminRouter(db))
+		r.Mount("/admin/api", adminRouter(db, storage, conf))
 		// TODO: Admin routes
 	})
 
@@ -84,14 +95,34 @@ func main() {
 }
 
 // A completely separate router for administrator routes
-func adminRouter(db store.DataStore) http.Handler {
+func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value) http.Handler {
 	r := chi.NewRouter()
 	r.Use(AdminOnly)
-	// TODO Admin routes
+
 	paperHandler := handlers.NewPaperHandlers(db)
 	r.Post("/papers", paperHandler.AddPaper)
 	r.Put("/papers/{id}", paperHandler.UpdatePaper)
 	r.Delete("/papers/{id}", paperHandler.DeletePaper)
+
+	cartHandler := handlers.NewCartHandlers(db)
+	r.Get("/carts", cartHandler.GetCarts)
+	r.Get("/carts/{userId}", cartHandler.GetUserCart)
+
+	orderHandler := handlers.NewOrderHandlers(db)
+	r.Get("/orders", orderHandler.GetOrders)
+	r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
+	r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)
+	r.Put("/orders/{userId}/{id}", orderHandler.UpdateOrder)
+	r.Delete("/orders/{userId}/{id}", orderHandler.DeleteOrder)
+
+	pictureHandler := handlers.NewPictureHandlers(db, storage)
+	r.Get("/pictures", pictureHandler.GetPictures)
+	r.Get("/pictures/{userId}", pictureHandler.GetPicturesByUser)
+	r.Get("/pictures/{userId}/{id}", pictureHandler.GetPictureInfo)
+
+	configHandler := handlers.NewConfigHandlers(db, conf)
+	r.Get("/config", configHandler.GetConfig)
+	r.Put("/config", configHandler.PutConfig)
 	return r
 }
 
