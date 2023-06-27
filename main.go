@@ -79,7 +79,7 @@ func main() {
 			r.Put("/carts/{userId}", cartHandler.PutCart)
 			r.Put("/carts/{userId}/print", cartHandler.AddPrintToCart)
 
-			orderHandler := handlers.NewOrderHandlers(db)
+			orderHandler := handlers.NewOrderHandlers(db, conf)
 			r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
 			r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)
 			r.Post("/orders/{userId}", orderHandler.AddOrder)
@@ -123,7 +123,7 @@ func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value
 	r.Get("/carts", cartHandler.GetCarts)
 	r.Get("/carts/{userId}", cartHandler.GetUserCart)
 
-	orderHandler := handlers.NewOrderHandlers(db)
+	orderHandler := handlers.NewOrderHandlers(db, conf)
 	r.Get("/orders", orderHandler.GetOrders)
 	r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
 	r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)

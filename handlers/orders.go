@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog"
@@ -15,11 +18,12 @@ import (
 )
 
 type OrderHandlers struct {
-	db store.DataStore
+	db   store.DataStore
+	conf atomic.Value
 }
 
-func NewOrderHandlers(db store.DataStore) *OrderHandlers {
-	return &OrderHandlers{db: db}
+func NewOrderHandlers(db store.DataStore, conf atomic.Value) *OrderHandlers {
+	return &OrderHandlers{db: db, conf: conf}
 }
 
 // GetOrders gets all orders from the database
@@ -103,9 +107,47 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("error parsing user id: %v", err), http.StatusBadRequest)
 		return
 	}
-	// TODO: get the order from the cart and not the body
+
+	// Get the user's cart
+	cart, err := fetchOne[types.Cart](o.db, fmt.Sprintf("carts:%d", id))
+	if errors.Is(err, store.ErrKeyNotFound) || (cart != nil && len(cart.Prints) == 0) {
+		writeHttpError(r.Context(), w, fmt.Errorf("cart is empty, unable to place order"), http.StatusBadRequest)
+	} else if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error getting cart: %v", err), http.StatusInternalServerError)
+		return
+	}
+	// Parse the body for the shipping details
+	var shippingDetails types.ShippingDetails
+	if err := json.NewDecoder(r.Body).Decode(&shippingDetails); err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error decoding shipping details: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	conf := o.conf.Load().(*types.Config)
+	shippingDetails, err = normalizeShippingDetails(shippingDetails, *conf)
+	if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("shipping details are not valid: %v", err), http.StatusBadRequest)
+	}
+
+	var subtotal float64
+	// Print prices were set and validated when they were added to the cart
+	for _, print := range cart.Prints {
+		subtotal += print.Cost
+	}
+	// Round the float to 2 decimal places
+	subtotal = math.Round(subtotal*100) / 100
+
+	order := &types.Order{
+		UserID:          uint(id),
+		Prints:          cart.Prints,
+		ShippingDetails: shippingDetails,
+		PrintsSubtotal:  subtotal,
+		OrderTotal:      subtotal + shippingDetails.ShippingProfile.Cost,
+	}
+
 	// TODO: Use the square checkout API to generate a payment link and return it, calculating the shipping price as well
-	add[*types.Order](o.db, "orders", w, r, validateOrderFunc(uint(id)), func(order *types.Order) error {
+
+	order, err = addOne[*types.Order](o.db, "orders", order, validateOrderFunc(uint(id)), func(order *types.Order) error {
 		// Add the order to the user's list of orders
 		userOrdersKey := fmt.Sprintf("orders:%d", order.UserID)
 		keys, err := getKeys(o.db, userOrdersKey)
@@ -134,6 +176,16 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 
 		return nil
 	})
+
+	if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error adding order to database: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(order); err != nil {
+		logger.Error().Err(err).Msg("Error writing response")
+	}
 }
 
 func (o *OrderHandlers) UpdateOrder(w http.ResponseWriter, r *http.Request) {
@@ -180,4 +232,24 @@ func validateOrderFunc(currentUserID uint) ValidationFunc[*types.Order] {
 		// TODO: Additional validation around shipping profile, calculated cost, etc.
 		return 0, nil
 	}
+}
+
+func normalizeShippingDetails(details types.ShippingDetails, conf types.Config) (types.ShippingDetails, error) {
+	if details.TrackingNumber != nil {
+		return types.ShippingDetails{}, fmt.Errorf("tracking number cannot be set when creating an order")
+	}
+	shippingMethod := details.ShippingProfile.ShippingMethod
+	var shippingProfile *types.ShippingProfile
+	for _, profile := range conf.Costs.ShippingProfiles {
+		if shippingMethod == profile.ShippingMethod {
+			shippingProfile = &profile
+			break
+		}
+	}
+	if shippingProfile == nil {
+		return types.ShippingDetails{}, fmt.Errorf("invalid shipping method: %s", shippingMethod)
+	}
+	details.ShippingProfile = *shippingProfile
+
+	return details, nil
 }

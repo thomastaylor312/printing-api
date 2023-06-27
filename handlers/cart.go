@@ -78,7 +78,7 @@ func (c *CartHandlers) PutCart(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, print := range cart.Prints {
-		if err := c.validatePrint(print); err != nil {
+		if err := c.normalizePrint(&print); err != nil {
 			writeHttpError(r.Context(), w, err, http.StatusBadRequest)
 			return
 		}
@@ -121,7 +121,7 @@ func (c *CartHandlers) AddPrintToCart(w http.ResponseWriter, r *http.Request) {
 
 	logger.Debug().Msg("Validating print")
 
-	if err := c.validatePrint(print); err != nil {
+	if err := c.normalizePrint(&print); err != nil {
 		writeHttpError(r.Context(), w, err, http.StatusBadRequest)
 		return
 	}
@@ -141,8 +141,6 @@ func (c *CartHandlers) AddPrintToCart(w http.ResponseWriter, r *http.Request) {
 		}
 		cart = &types.Cart{UserID: uint(id)}
 	}
-
-	// TODO: Once we pass in config, validate that the width and height are not greater than the configured max size
 
 	logger.Debug().Msg("Adding print to cart")
 
@@ -201,9 +199,9 @@ func (c *CartHandlers) ensureCart(userID string) error {
 	return nil
 }
 
-func (c *CartHandlers) validatePrint(print types.Print) error {
+func (c *CartHandlers) normalizePrint(print *types.Print) error {
 	// Fetch the paper type by ID, if the key doesn't exist, return bad request
-	_, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%d", print.PaperTypeID))
+	paper, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%d", print.PaperTypeID))
 	if errors.Is(err, store.ErrKeyNotFound) {
 		return fmt.Errorf("invalid paper ID given")
 	} else if err != nil {
@@ -211,10 +209,14 @@ func (c *CartHandlers) validatePrint(print types.Print) error {
 	}
 
 	// Check that width and height are not greater than the configured max size
-	val := c.config.Load()
-	config := val.(types.Config)
+	config := c.config.Load().(*types.Config)
 	if print.Width > config.MaxSize && print.Height > config.MaxSize {
 		return fmt.Errorf("print is too large")
 	}
+
+	// Set the correct cost
+	rawMaterialsCost := (paper.CostPerSquareInch * print.Width * print.Height) + (config.Costs.InkPerSquareInch * print.Width * print.Height)
+	print.Cost = rawMaterialsCost + (rawMaterialsCost * config.Costs.DesiredProfitMargin)
+
 	return nil
 }

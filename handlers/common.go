@@ -65,61 +65,66 @@ func add[T IDManager](db store.DataStore, name string, w http.ResponseWriter, r 
 		writeHttpError(r.Context(), w, fmt.Errorf("error decoding: %v", err), http.StatusBadRequest)
 		return
 	}
-	// TODO: Validate the type (will need to modify generic)
-	id, err := db.GenerateId()
+
+	returnData, err := addOne[T](db, name, userData, validation, additionalUpdate)
 	if err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error generating id: %v", err), http.StatusInternalServerError)
+		writeHttpError(r.Context(), w, fmt.Errorf("error adding %s: %v", name, err), http.StatusInternalServerError)
 		return
 	}
-	userData.SetID(id)
+
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(returnData); err != nil {
+		logger.Error().Err(err).Msg("Error writing response")
+	}
+}
+
+func addOne[T IDManager](db store.DataStore, name string, item T, validation ValidationFunc[T], additionalUpdate func(T) error) (T, error) {
+	// TODO: Validate the type (will need to modify generic)
+	id, err := db.GenerateId()
+	var empty T
+	if err != nil {
+		return empty, err
+	}
+	item.SetID(id)
 	rawBuf := new(bytes.Buffer)
-	if err := gob.NewEncoder(rawBuf).Encode(userData); err != nil {
-		// If we can't encode, that is our fault, not the user's
-		writeHttpError(r.Context(), w, fmt.Errorf("error adding: %v", err), http.StatusInternalServerError)
-		return
+	if err := gob.NewEncoder(rawBuf).Encode(item); err != nil {
+		return empty, err
 	}
 	db_key := fmt.Sprintf("%s:%d", name, id)
 	if err := db.Set(db_key, rawBuf.Bytes()); err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error adding: %v", err), http.StatusInternalServerError)
-		return
+		return empty, err
 	}
 
 	// Perform any additional updates if they exist
 	if additionalUpdate != nil {
-		if err := additionalUpdate(userData); err != nil {
-			writeHttpError(r.Context(), w, fmt.Errorf("error updating: %v", err), http.StatusInternalServerError)
-			return
+		if err := additionalUpdate(item); err != nil {
+			return empty, err
 		}
 	}
 
 	data, err := db.Get(name)
 	var keys []string
 	if err != nil && !errors.Is(err, store.ErrKeyNotFound) {
-		writeHttpError(r.Context(), w, fmt.Errorf("error getting: %v", err), http.StatusInternalServerError)
-		return
+		return empty, err
 	} else if err != nil {
 		keys = make([]string, 1)
 	} else {
 		if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&keys); err != nil {
-			writeHttpError(r.Context(), w, fmt.Errorf("error decoding : %v", err), http.StatusInternalServerError)
-			return
+			return empty, err
 		}
 	}
 
 	keys = append(keys, db_key)
 	rawBuf = new(bytes.Buffer)
 	if err := gob.NewEncoder(rawBuf).Encode(keys); err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error adding keys: %v", err), http.StatusInternalServerError)
-		return
+		return empty, err
 	}
 	if err := db.Set(name, rawBuf.Bytes()); err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error adding keys: %v", err), http.StatusInternalServerError)
-		return
+		return empty, err
 	}
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(userData); err != nil {
-		logger.Error().Err(err).Msg("Error writing response")
-	}
+
+	return item, nil
+
 }
 
 func update[T IDManager](db store.DataStore, name string, w http.ResponseWriter, r *http.Request, validation ValidationFunc[T], additionalUpdate func(T) error) {

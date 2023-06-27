@@ -8,7 +8,6 @@ type ShippingMethod string
 type PaperFinish string
 
 const (
-	// TODO: Actually specify methods
 	ShippingMethodStandard  ShippingMethod = "standard"
 	ShippingMethodExpress   ShippingMethod = "express"
 	ShippingMethodOvernight ShippingMethod = "overnight"
@@ -44,9 +43,6 @@ type Print struct {
 	CropY       *uint   `json:"cropY"`
 	Cost        float64 `json:"cost"`
 	Quantity    uint    `json:"quantity"`
-	// An optional shipping cost for this print. Will be overridden on an order if the order has a
-	// shipping cost set
-	ShippingCost *float64 `json:"shippingCost"`
 }
 
 type Picture struct {
@@ -70,9 +66,8 @@ func (p *Picture) SetID(id uint) {
 
 // ShippingDetails represents the shipping details for an order
 type ShippingDetails struct {
-	ShippingCost   float64         `json:"shippingCost"`
-	ShippingMethod ShippingProfile `json:"shippingMethod"`
-	TrackingNumber *string         `json:"trackingNumber"`
+	ShippingProfile ShippingProfile `json:"shippingProfile"`
+	TrackingNumber  *string         `json:"trackingNumber,omitempty"`
 }
 
 // Order represents an order in the system
@@ -80,6 +75,8 @@ type Order struct {
 	OrderID         uint            `json:"id"`
 	UserID          uint            `json:"userId"`
 	Prints          []Print         `json:"prints"`
+	PrintsSubtotal  float64         `json:"printsSubtotal"`
+	OrderTotal      float64         `json:"orderTotal"`
 	PaymentLink     url.URL         `json:"paymentLink"`
 	ExternalOrderID string          `json:"externalOrderId"`
 	ShippingDetails ShippingDetails `json:"shippingDetails"`
