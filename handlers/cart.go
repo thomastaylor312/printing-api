@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
@@ -58,8 +57,7 @@ func (c *CartHandlers) GetUserCart(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("error getting cart: %v", err), http.StatusInternalServerError)
 		return
 	} else if err != nil {
-		id, _ := strconv.ParseUint(userID, 10, 64)
-		cart = &types.Cart{UserID: uint(id)}
+		cart = &types.Cart{UserID: userID}
 	}
 
 	if err := json.NewEncoder(w).Encode(json.NewEncoder(w).Encode(cart)); err != nil {
@@ -134,12 +132,7 @@ func (c *CartHandlers) AddPrintToCart(w http.ResponseWriter, r *http.Request) {
 		writeHttpError(r.Context(), w, fmt.Errorf("error getting cart: %v", err), http.StatusInternalServerError)
 		return
 	} else if err != nil {
-		id, err := strconv.ParseUint(userID, 10, 64)
-		if err != nil {
-			writeHttpError(r.Context(), w, fmt.Errorf("invalid user ID: %v", err), http.StatusBadRequest)
-			return
-		}
-		cart = &types.Cart{UserID: uint(id)}
+		cart = &types.Cart{UserID: userID}
 	}
 
 	logger.Debug().Msg("Adding print to cart")
@@ -201,7 +194,7 @@ func (c *CartHandlers) ensureCart(userID string) error {
 
 func (c *CartHandlers) normalizePrint(print *types.Print) error {
 	// Fetch the paper type by ID, if the key doesn't exist, return bad request
-	paper, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%d", print.PaperTypeID))
+	paper, err := fetchOne[types.PaperType](c.db, fmt.Sprintf("papers:%s", print.PaperTypeID))
 	if errors.Is(err, store.ErrKeyNotFound) {
 		return fmt.Errorf("invalid paper ID given")
 	} else if err != nil {

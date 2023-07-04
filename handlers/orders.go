@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"net/http"
-	"strconv"
 	"sync/atomic"
 
 	"github.com/go-chi/chi/v5"
@@ -102,14 +101,9 @@ func (o *OrderHandlers) GetOrderForUser(w http.ResponseWriter, r *http.Request) 
 func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "userId")
 	logger := httplog.LogEntry(r.Context()).With().Str("userID", userID).Logger()
-	id, err := strconv.ParseUint(userID, 10, 64)
-	if err != nil {
-		writeHttpError(r.Context(), w, fmt.Errorf("error parsing user id: %v", err), http.StatusBadRequest)
-		return
-	}
 
 	// Get the user's cart
-	cart, err := fetchOne[types.Cart](o.db, fmt.Sprintf("carts:%d", id))
+	cart, err := fetchOne[types.Cart](o.db, fmt.Sprintf("carts:%s", userID))
 	if errors.Is(err, store.ErrKeyNotFound) || (cart != nil && len(cart.Prints) == 0) {
 		writeHttpError(r.Context(), w, fmt.Errorf("cart is empty, unable to place order"), http.StatusBadRequest)
 	} else if err != nil {
@@ -138,7 +132,7 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 	subtotal = math.Round(subtotal*100) / 100
 
 	order := &types.Order{
-		UserID:          uint(id),
+		UserID:          userID,
 		Prints:          cart.Prints,
 		ShippingDetails: shippingDetails,
 		PrintsSubtotal:  subtotal,
@@ -147,15 +141,15 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 
 	// TODO: Use the square checkout API to generate a payment link and return it, calculating the shipping price as well
 
-	order, err = addOne[*types.Order](o.db, "orders", order, validateOrderFunc(uint(id)), func(order *types.Order) error {
+	order, err = addOne[*types.Order](o.db, "orders", order, validateOrderFunc(userID), func(order *types.Order) error {
 		// Add the order to the user's list of orders
-		userOrdersKey := fmt.Sprintf("orders:%d", order.UserID)
+		userOrdersKey := fmt.Sprintf("orders:%s", order.UserID)
 		keys, err := getKeys(o.db, userOrdersKey)
 		if err != nil {
 			return fmt.Errorf("error getting keys: %v", err)
 		}
 
-		keys = append(keys, fmt.Sprintf("orders:%d", order.ID()))
+		keys = append(keys, fmt.Sprintf("orders:%s", order.ID()))
 		rawBuf := new(bytes.Buffer)
 		if err := gob.NewEncoder(rawBuf).Encode(keys); err != nil {
 			return fmt.Errorf("error adding keys: %v", err)
@@ -170,7 +164,7 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 			// This is ok if we don't actually succeed, it will just have stale data
 			logger.Warn().Err(err).Msg("Error clearing cart")
 		}
-		if err := o.db.Set(fmt.Sprintf("carts:%d", order.UserID), rawBuf.Bytes()); err != nil {
+		if err := o.db.Set(fmt.Sprintf("carts:%s", order.UserID), rawBuf.Bytes()); err != nil {
 			logger.Warn().Err(err).Msg("Error clearing cart")
 		}
 
@@ -222,12 +216,12 @@ func (o *OrderHandlers) DeleteOrder(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func validateOrderFunc(currentUserID uint) ValidationFunc[*types.Order] {
+func validateOrderFunc(currentUserID string) ValidationFunc[*types.Order] {
 	return func(order *types.Order) (int, error) {
 		// We shouldn't get here ever because we are validating the owner has this path, but just in
 		// case, we check
 		if order.UserID != currentUserID {
-			return http.StatusForbidden, fmt.Errorf("user %d cannot create order for another user", currentUserID)
+			return http.StatusForbidden, fmt.Errorf("user %s cannot create order for another user", currentUserID)
 		}
 		// TODO: Additional validation around shipping profile, calculated cost, etc.
 		return 0, nil

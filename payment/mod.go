@@ -1,41 +1,15 @@
 package payment
 
-// TODO: Use the valid request below to generate a payment link (ask copilot chat to write it for me)
-// curl https://connect.squareupsandbox.com/v2/online-checkout/payment-links \
-//   -X POST \
-//   -H 'Square-Version: 2023-06-08' \
-//   -H 'Authorization: Bearer foobar' \
-//   -H 'Content-Type: application/json' \
-//   -d '{
-//     "idempotency_key": "6918319e-b9e3-4e2d-bea2-ea12e40926f0",
-//     "checkout_options": {
-//       "allow_tipping": false,
-//       "ask_for_shipping_address": true,
-//       "shipping_fee": {
-//         "charge": {
-//           "amount": 5,
-//           "currency": "USD"
-//         },
-//         "name": "Flat Rate"
-//       },
-//       "redirect_url": "https://printing.focusandfilters.com/order_completed"
-//     },
-//     "order": {
-//       "location_id": "LMMFFMJR68REF",
-//       "customer_id": "foobar",
-//       "line_items": [
-//         {
-//           "quantity": "1",
-//           "base_price_money": {
-//             "amount": 45,
-//             "currency": "USD"
-//           },
-//           "item_type": "ITEM",
-//           "name": "My Cool Print"
-//         }
-//       ],
-//       "reference_id": "internal-id"
-//     }
-//   }'
+import (
+	"net/url"
 
-// TODO: Fetch the order once the user gets to order completed and validate that it was paid
+	"github.com/thomastaylor312/printing-api/types"
+)
+
+type Payment interface {
+	// CreateOrder creates a new order with the payment provider and returns the external order ID
+	// and optional URL to the payment page
+	CreateOrder(order types.Order) (string, *url.URL, error)
+	// ValidateOrderPaid checks if the order with the provided external ID has been paid for
+	ValidateOrderPaid(externalOrderID string) (bool, error)
+}

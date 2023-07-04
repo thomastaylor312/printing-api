@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog"
@@ -15,8 +14,8 @@ import (
 )
 
 type IDManager interface {
-	ID() uint
-	SetID(id uint)
+	ID() string
+	SetID(id string)
 }
 
 // ValidationFunc is a function that validates a type and returns an error and HTTP status code if
@@ -90,7 +89,7 @@ func addOne[T IDManager](db store.DataStore, name string, item T, validation Val
 	if err := gob.NewEncoder(rawBuf).Encode(item); err != nil {
 		return empty, err
 	}
-	db_key := fmt.Sprintf("%s:%d", name, id)
+	db_key := fmt.Sprintf("%s:%s", name, id)
 	if err := db.Set(db_key, rawBuf.Bytes()); err != nil {
 		return empty, err
 	}
@@ -129,19 +128,15 @@ func addOne[T IDManager](db store.DataStore, name string, item T, validation Val
 
 func update[T IDManager](db store.DataStore, name string, w http.ResponseWriter, r *http.Request, validation ValidationFunc[T], additionalUpdate func(T) error) {
 	logger := httplog.LogEntry(r.Context())
-	stringID := chi.URLParam(r, "id")
-	id, err := strconv.ParseInt(stringID, 10, 64)
-	if err != nil {
-		writeHttpError(r.Context(), w, errors.New("id is not a uint"), http.StatusBadRequest)
-		return
-	}
+	id := chi.URLParam(r, "id")
+
 	var userData T
 	// Validate that we can decode the paper
 	if err := json.NewDecoder(r.Body).Decode(&userData); err != nil {
 		writeHttpError(r.Context(), w, fmt.Errorf("error decoding: %v", err), http.StatusBadRequest)
 		return
 	}
-	if userData.ID() != uint(id) {
+	if userData.ID() != id {
 		writeHttpError(r.Context(), w, errors.New("given item does not have an ID that matches"), http.StatusBadRequest)
 		return
 	}
@@ -160,7 +155,7 @@ func update[T IDManager](db store.DataStore, name string, w http.ResponseWriter,
 		}
 	}
 
-	db_key := fmt.Sprintf("%s:%d", name, userData.ID())
+	db_key := fmt.Sprintf("%s:%s", name, userData.ID())
 	if err := db.Set(db_key, rawBuf.Bytes()); err != nil {
 		writeHttpError(r.Context(), w, fmt.Errorf("error adding paper: %v", err), http.StatusInternalServerError)
 		return

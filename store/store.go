@@ -17,7 +17,7 @@ type DataStore interface {
 	Set(key string, value []byte) error
 	Delete(key string) error
 	// GenerateId generates a unique id for the store
-	GenerateId() (uint, error)
+	GenerateId() (string, error)
 }
 
 type ImageStore interface {

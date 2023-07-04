@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"strconv"
 
 	"go.etcd.io/bbolt"
 )
@@ -64,8 +65,8 @@ func (d *DiskDataStore) Delete(key string) error {
 	})
 }
 
-func (d *DiskDataStore) GenerateId() (uint, error) {
-	var id uint
+func (d *DiskDataStore) GenerateId() (string, error) {
+	var id string
 	err := d.db.Update(func(tx *bbolt.Tx) error {
 		bucket := tx.Bucket([]byte(dataBucket))
 		if bucket == nil {
@@ -75,7 +76,7 @@ func (d *DiskDataStore) GenerateId() (uint, error) {
 		if err != nil {
 			return err
 		}
-		id = uint(nextid)
+		id = strconv.FormatUint(nextid, 10)
 		return nil
 	})
 	return id, err

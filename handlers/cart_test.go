@@ -39,10 +39,10 @@ func TestHappyPath(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	require.NoError(t, err)
 	cart := types.Cart{
-		UserID: 1,
+		UserID: "1",
 		Prints: []types.Print{
 			{
-				PictureID: 1,
+				PictureID: "1",
 				Width:     8,
 				Height:    10,
 			},
@@ -73,7 +73,7 @@ func TestHappyPath(t *testing.T) {
 	// Now put an empty cart for another user
 	recorder = httptest.NewRecorder()
 	buf = new(bytes.Buffer)
-	err = json.NewEncoder(buf).Encode(types.Cart{UserID: 2, Prints: []types.Print{}})
+	err = json.NewEncoder(buf).Encode(types.Cart{UserID: "2", Prints: []types.Print{}})
 	require.NoError(t, err)
 	req = httptest.NewRequest(http.MethodPut, "/carts/2", buf)
 	r.ServeHTTP(recorder, req)
@@ -89,7 +89,7 @@ func TestHappyPath(t *testing.T) {
 	var carts []types.Cart
 	err = json.NewDecoder(recorder.Body).Decode(&carts)
 	require.NoError(t, err)
-	require.Equal(t, []types.Cart{cart, {UserID: 2}}, carts)
+	require.Equal(t, []types.Cart{cart, {UserID: "2"}}, carts)
 }
 
 func TestEmptyCart(t *testing.T) {
@@ -115,7 +115,7 @@ func TestEmptyCart(t *testing.T) {
 	var cart types.Cart
 	err = json.NewDecoder(recorder.Body).Decode(&cart)
 	require.NoError(t, err)
-	require.Equal(t, types.Cart{UserID: 1}, cart)
+	require.Equal(t, types.Cart{UserID: "1"}, cart)
 }
 
 // TODO: Test failed verification of print size

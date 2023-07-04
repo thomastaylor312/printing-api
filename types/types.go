@@ -18,17 +18,17 @@ const (
 
 // User represents a user in the system
 type User struct {
-	UserId   uint   `json:"id"`
+	UserId   string `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	IsAdmin  bool   `json:"isAdmin"`
 }
 
-func (u *User) ID() uint {
+func (u *User) ID() string {
 	return u.UserId
 }
 
-func (u *User) SetID(id uint) {
+func (u *User) SetID(id string) {
 	u.UserId = id
 }
 
@@ -37,8 +37,8 @@ type Print struct {
 	Width       float64 `json:"width"`
 	Height      float64 `json:"height"`
 	BorderSize  float64 `json:"borderSize"`
-	PaperTypeID uint    `json:"paperTypeId"`
-	PictureID   uint    `json:"pictureId"`
+	PaperTypeID string  `json:"paperTypeId"`
+	PictureID   string  `json:"pictureId"`
 	CropX       *uint   `json:"cropX"`
 	CropY       *uint   `json:"cropY"`
 	Cost        float64 `json:"cost"`
@@ -46,8 +46,8 @@ type Print struct {
 }
 
 type Picture struct {
-	PictureID uint   `json:"id"`
-	UserID    uint   `json:"userId"`
+	PictureID string `json:"id"`
+	UserID    string `json:"userId"`
 	Name      string `json:"name"`
 	// This is the URL the picture is distributed from, which could be a CDN or directly from a
 	// bucket. This is generally only set after uploading or fetching a picture and isn't stored in
@@ -56,11 +56,11 @@ type Picture struct {
 	// TODO: We should probably store a last used time so we can clean up old pictures
 }
 
-func (p *Picture) ID() uint {
+func (p *Picture) ID() string {
 	return p.PictureID
 }
 
-func (p *Picture) SetID(id uint) {
+func (p *Picture) SetID(id string) {
 	p.PictureID = id
 }
 
@@ -72,8 +72,8 @@ type ShippingDetails struct {
 
 // Order represents an order in the system
 type Order struct {
-	OrderID         uint            `json:"id"`
-	UserID          uint            `json:"userId"`
+	OrderID         string          `json:"id"`
+	UserID          string          `json:"userId"`
 	Prints          []Print         `json:"prints"`
 	PrintsSubtotal  float64         `json:"printsSubtotal"`
 	OrderTotal      float64         `json:"orderTotal"`
@@ -85,33 +85,33 @@ type Order struct {
 	IsDelivered     bool            `json:"isDelivered"`
 }
 
-func (o *Order) ID() uint {
+func (o *Order) ID() string {
 	return o.OrderID
 }
 
-func (o *Order) SetID(id uint) {
+func (o *Order) SetID(id string) {
 	o.OrderID = id
 }
 
 // Cart represents the current items in a user's cart
 type Cart struct {
-	UserID uint    `json:"userId"`
+	UserID string  `json:"userId"`
 	Prints []Print `json:"prints"`
 }
 
 // PaperType represents a type of paper that can be used for printing and its cost
 type PaperType struct {
-	PaperID           uint        `json:"id"`
+	PaperID           string      `json:"id"`
 	Name              string      `json:"name"`
 	CostPerSquareInch float64     `json:"costPerSquareInch"`
 	Finish            PaperFinish `json:"finish"`
 }
 
-func (p *PaperType) ID() uint {
+func (p *PaperType) ID() string {
 	return p.PaperID
 }
 
-func (p *PaperType) SetID(id uint) {
+func (p *PaperType) SetID(id string) {
 	p.PaperID = id
 }
 

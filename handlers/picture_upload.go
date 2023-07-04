@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog"
@@ -69,7 +68,7 @@ func (p *PictureHandlers) GetPictureInfo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	// Get the URL for the picture
-	url, err := p.storage.Get(userID, strconv.FormatUint(uint64(picture.ID()), 10))
+	url, err := p.storage.Get(userID, picture.ID())
 	if err != nil {
 		writeHttpError(r.Context(), w, fmt.Errorf("error getting picture URL: %v", err), http.StatusInternalServerError)
 		return
@@ -88,13 +87,13 @@ func (p *PictureHandlers) CreatePicture(w http.ResponseWriter, r *http.Request) 
 	logger.Debug().Msg("Creating picture")
 	add[*types.Picture](p.db, "pictures", w, r, nil, func(picture *types.Picture) error {
 		// Add the order to the user's list of orders
-		userPicturesKey := fmt.Sprintf("pictures:%d", picture.UserID)
+		userPicturesKey := fmt.Sprintf("pictures:%s", picture.UserID)
 		keys, err := getKeys(p.db, userPicturesKey)
 		if err != nil {
 			return fmt.Errorf("error getting current pictures: %v", err)
 		}
 
-		keys = append(keys, fmt.Sprintf("pictures:%d", picture.ID()))
+		keys = append(keys, fmt.Sprintf("pictures:%s", picture.ID()))
 		rawBuf := new(bytes.Buffer)
 		if err := gob.NewEncoder(rawBuf).Encode(keys); err != nil {
 			return fmt.Errorf("error adding keys: %v", err)
@@ -125,7 +124,7 @@ func (p *PictureHandlers) UploadPicture(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	// TODO: Detect content type and make sure it matches the content type header
-	u, err := p.storage.Set(userID, strconv.FormatUint(uint64(picture.ID()), 10), uint(r.ContentLength), r.Body)
+	u, err := p.storage.Set(userID, picture.ID(), uint(r.ContentLength), r.Body)
 	if err != nil {
 		writeHttpError(r.Context(), w, fmt.Errorf("error uploading picture: %v", err), http.StatusInternalServerError)
 		return
@@ -206,7 +205,7 @@ func (p *PictureHandlers) getPicture(pictureID string, userID string, w http.Res
 		writeHttpError(r.Context(), w, formattedErr, http.StatusInternalServerError)
 		return picture, formattedErr
 	}
-	if strconv.FormatUint(uint64(picture.UserID), 10) != userID {
+	if picture.UserID != userID {
 		formattedErr := fmt.Errorf("user does not have picture with specified ID")
 		writeHttpError(r.Context(), w, formattedErr, http.StatusNotFound)
 		return picture, formattedErr
