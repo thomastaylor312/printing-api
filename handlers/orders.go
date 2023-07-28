@@ -12,17 +12,19 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/httplog"
+	"github.com/thomastaylor312/printing-api/payment"
 	"github.com/thomastaylor312/printing-api/store"
 	"github.com/thomastaylor312/printing-api/types"
 )
 
 type OrderHandlers struct {
-	db   store.DataStore
-	conf atomic.Value
+	db      store.DataStore
+	conf    atomic.Value
+	payment payment.Payment
 }
 
-func NewOrderHandlers(db store.DataStore, conf atomic.Value) *OrderHandlers {
-	return &OrderHandlers{db: db, conf: conf}
+func NewOrderHandlers(db store.DataStore, conf atomic.Value, payment payment.Payment) *OrderHandlers {
+	return &OrderHandlers{db: db, conf: conf, payment: payment}
 }
 
 // GetOrders gets all orders from the database
@@ -139,7 +141,15 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 		OrderTotal:      subtotal + shippingDetails.ShippingProfile.Cost,
 	}
 
-	// TODO: Use the square checkout API to generate a payment link and return it, calculating the shipping price as well
+	// Create the order in the payment provider
+	externalOrderID, checkoutURL, err := o.payment.CreateOrder(*order)
+	if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error creating order: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	order.ExternalOrderID = externalOrderID
+	order.PaymentLink = checkoutURL
 
 	order, err = addOne[*types.Order](o.db, "orders", order, validateOrderFunc(userID), func(order *types.Order) error {
 		// Add the order to the user's list of orders
@@ -183,6 +193,31 @@ func (o *OrderHandlers) AddOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (o *OrderHandlers) UpdateOrder(w http.ResponseWriter, r *http.Request) {
+	update[*types.Order](o.db, "orders", w, r, nil, nil)
+}
+
+// ConfirmOrderPayed is a user-facing endpoint that is called when the user has payed for their
+// order. This should validate that the order was payed and update it accordingly.
+func (o *OrderHandlers) ConfirmOrderPayed(w http.ResponseWriter, r *http.Request) {
+	orderId := chi.URLParam(r, "id")
+	order, err := fetchOne[types.Order](o.db, fmt.Sprintf("orders:%s", orderId))
+	if errors.Is(err, store.ErrKeyNotFound) {
+		writeHttpError(r.Context(), w, fmt.Errorf("order not found"), http.StatusNotFound)
+		return
+	} else if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error getting order: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	paid, err := o.payment.ValidateOrderPaid(order.ExternalOrderID)
+	if err != nil {
+		writeHttpError(r.Context(), w, fmt.Errorf("error validating order payment: %v", err), http.StatusInternalServerError)
+		return
+	} else if !paid {
+		writeHttpError(r.Context(), w, fmt.Errorf("order has not been paid"), http.StatusBadRequest)
+		return
+	}
+
 	update[*types.Order](o.db, "orders", w, r, nil, nil)
 }
 

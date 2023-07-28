@@ -3,11 +3,13 @@ package payment
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/thomastaylor312/printing-api/types"
@@ -95,6 +97,40 @@ func NewSquare(token string, domain string, redirectUrl url.URL, locationID stri
 	}, nil
 }
 
+// NewSquareFromEnv is a helper function to create a new Square payment handler from configuration
+// given by environment variable
+func NewSquareFromEnv() (*Square, error) {
+	// Get the payment URL from env var
+	paymentURL := os.Getenv("PAYMENT_API_REDIRECT_URL")
+	if paymentURL == "" {
+		return nil, errors.New("PAYMENT_API_REDIRECT_URL must be set")
+	}
+	parsedURL, err := url.Parse(paymentURL)
+	if err != nil {
+		return nil, fmt.Errorf("PAYMENT_API_REDIRECT_URL must be a valid URL: %w", err)
+	}
+
+	// Get the location ID from env var
+	locationID := os.Getenv("PAYMENT_API_LOCATION_ID")
+	if locationID == "" {
+		return nil, errors.New("PAYMENT_API_LOCATION_ID must be set")
+	}
+
+	// Get the token from env var
+	token := os.Getenv("PAYMENT_API_TOKEN")
+	if token == "" {
+		return nil, errors.New("PAYMENT_API_TOKEN must be set")
+	}
+
+	// Get the domain from env var
+	domain := os.Getenv("PAYMENT_API_DOMAIN")
+	if domain == "" {
+		return nil, errors.New("PAYMENT_API_DOMAIN must be set")
+	}
+
+	return NewSquare(token, domain, *parsedURL, locationID)
+}
+
 func (s *Square) CreateOrder(order types.Order) (externalOrderID string, paymentLink *url.URL, err error) {
 	// Set up the request body
 	lineItems := make([]map[string]interface{}, len(order.Prints))
@@ -177,7 +213,7 @@ func (s *Square) CreateOrder(order types.Order) (externalOrderID string, payment
 	return externalOrderID, paymentLink, nil
 }
 
-func (s *Square) ValidateOrder(orderID string) (bool, error) {
+func (s *Square) ValidateOrderPaid(orderID string) (bool, error) {
 	headers := s.baseHeaders.Clone()
 	headers.Set("Content-Type", "application/json")
 	// Set up the request

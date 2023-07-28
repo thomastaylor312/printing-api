@@ -77,7 +77,7 @@ type Order struct {
 	Prints          []Print         `json:"prints"`
 	PrintsSubtotal  float64         `json:"printsSubtotal"`
 	OrderTotal      float64         `json:"orderTotal"`
-	PaymentLink     url.URL         `json:"paymentLink"`
+	PaymentLink     *url.URL        `json:"paymentLink"`
 	ExternalOrderID string          `json:"externalOrderId"`
 	ShippingDetails ShippingDetails `json:"shippingDetails"`
 	IsPaid          bool            `json:"isPaid"`

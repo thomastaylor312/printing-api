@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"encoding/gob"
-	"go/types"
 	"net/http"
 	"path/filepath"
 	"sync/atomic"
@@ -14,7 +13,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/httplog"
 	"github.com/thomastaylor312/printing-api/handlers"
+	"github.com/thomastaylor312/printing-api/payment"
 	"github.com/thomastaylor312/printing-api/store"
+	"github.com/thomastaylor312/printing-api/types"
 )
 
 func main() {
@@ -37,6 +38,12 @@ func main() {
 	var config types.Config
 	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&config); err != nil {
 		logger.Fatal().Err(err).Msg("Error getting config information on startup")
+	}
+
+	// Create a new payment client
+	paymentClient, err := payment.NewSquareFromEnv()
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Error creating payment client")
 	}
 
 	conf := atomic.Value{}
@@ -79,11 +86,11 @@ func main() {
 			r.Put("/carts/{userId}", cartHandler.PutCart)
 			r.Put("/carts/{userId}/print", cartHandler.AddPrintToCart)
 
-			orderHandler := handlers.NewOrderHandlers(db, conf)
+			orderHandler := handlers.NewOrderHandlers(db, conf, paymentClient)
 			r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
 			r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)
 			r.Post("/orders/{userId}", orderHandler.AddOrder)
-			r.Put("/orders/{userId}/{id}", orderHandler.UpdateOrder)
+			r.Put("/orders/{userId}/{id}", orderHandler.ConfirmOrderPayed)
 
 			// For pictures, create a new group that uses the content type middleware
 			r.Group(func(r chi.Router) {
@@ -102,7 +109,7 @@ func main() {
 	// Mount the admin sub-router
 	r.Group(func(r chi.Router) {
 		// TODO: jwt middleware: https://github.com/go-chi/jwtauth
-		r.Mount("/admin/api", adminRouter(db, storage, conf))
+		r.Mount("/admin/api", adminRouter(db, storage, conf, paymentClient))
 		// TODO: Admin routes
 	})
 
@@ -110,7 +117,7 @@ func main() {
 }
 
 // A completely separate router for administrator routes
-func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value) http.Handler {
+func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value, paymentClient payment.Payment) http.Handler {
 	r := chi.NewRouter()
 	r.Use(AdminOnly)
 
@@ -123,7 +130,7 @@ func adminRouter(db store.DataStore, storage store.ImageStore, conf atomic.Value
 	r.Get("/carts", cartHandler.GetCarts)
 	r.Get("/carts/{userId}", cartHandler.GetUserCart)
 
-	orderHandler := handlers.NewOrderHandlers(db, conf)
+	orderHandler := handlers.NewOrderHandlers(db, conf, paymentClient)
 	r.Get("/orders", orderHandler.GetOrders)
 	r.Get("/orders/{userId}", orderHandler.GetOrdersByUser)
 	r.Get("/orders/{userId}/{id}", orderHandler.GetOrderForUser)
